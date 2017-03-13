@@ -1,7 +1,19 @@
 <div class="container">
 
+  <div>
+    {{main.status}}
+  </div>
 
-<input type="file" xlsx-file="main.fileList">
+  <div>
+    <input type="file" load-xlsx-file="main.loadFromFile(fileObject)">
+  </div>
 
-{{main.fileList}}
+  <div>
+    <button ng-click="main.loadFromServer()">Load from Server</button>
+  </div>
+
+  <div>
+    <button ng-click="main.testGetDialog()">Test Get 'charlie_01' Dialog</button>
+  </div>
+
 </div>

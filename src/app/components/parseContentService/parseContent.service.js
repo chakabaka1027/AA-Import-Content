@@ -5,68 +5,29 @@
 		.service('parseAAContentService', parseAAContentService);
 
 	/** @ngInject */
-	function parseAAContentService($log) {
+	function parseAAContentService($log, xlsxService) {
+
 		var service = {
+			parsedContent: {},
+
+			parseContentFromUrl: parseContentFromUrl,
+			parseContentFromFile: parseContentFromFile,
+
+			// mostly internal; exposed for testing...
 			parseAllSheets: parseAllSheets,
 			parseSheet: parseSheet,
-			findSheetSize: findSheetSize,
 			findSectionHeaders: findSectionHeaders
-		};
 
-		var reParseCR = /([A-Z]+)([0-9]+)/;
+		};
 
 		return service;
 
-		function decodeCR(crKey) {
-			var m = reParseCR.exec(crKey);
-			var cc = m[1], rc = m[2];
-			var c = 0;
-			for (var i = 0; i<cc.length; i++) {
-				c = 26*c + cc.charCodeAt(i) - 65;
-			}
-
-			return {c:c, r:(rc*1)-1};
-		}
-
-		function encodeCR(c,r) {
-			var cc = '';
-			cc = String.fromCharCode(65+c);
-			return cc+(r+1);
-		}
-
-		function cellValue(sheet, c, r) {
-			var cell = sheet[encodeCR(c,r)];
-			return (angular.isUndefined(cell) ? '' : cell.v);
-		}
-
-		function findSheetSize(sheet) {
-			var sheetSize = {r:0, c:0};
-
-			for (var crKey in sheet) {
-				if (crKey[0]==='!') continue;
-				var cr = decodeCR(crKey);
-				sheetSize.c = Math.max(sheetSize.c, cr.c+1);
-				sheetSize.r = Math.max(sheetSize.r, cr.r+1);
-			}
-
-			return sheetSize;
-		}
-
-		function sheetRow(sheet, r) {
-			var numCols = findSheetSize(sheet).c;
-			var row = [];
-			for (var c=0; c<numCols; c++) {
-				row.push(cellValue(sheet, c, r));
-			}
-			return row;
-		}
-
 		function findSectionHeaders(sheet) {
 			var hdrIndexes = [];
-			var numRows = findSheetSize(sheet).r;
+			var numRows = xlsxService.findSheetSize(sheet).r;
 
 			for (var r=0; r<numRows; r++) {
-				if ( (''+cellValue(sheet, 0,r)).toLowerCase() === 'annie') {
+				if ( (''+xlsxService.cellValue(sheet, 0,r)).toLowerCase() === 'annie') {
 					hdrIndexes.push(r);
 				}
 			}
@@ -91,6 +52,7 @@
 		}
 
 		function parseSheet(sheet) {
+
 			var hdrIndexes = findSectionHeaders(sheet);
 
 			if (hdrIndexes.length !== 1 && hdrIndexes.length !== 3) {
@@ -104,7 +66,7 @@
 
 			if (hdrIndexes.length===1) {
 				// it's a 'linear' exchange...
-				row = sheetRow(sheet, hdrIndexes[0]+1);
+				row = sheetRow(hdrIndexes[0]+1);
 				for (i=0, code='C'; i<4; i++, code += 'C') {
 					parsed['node'+(i+1)] = [createBlock(row, 5*i, code)];
 				}
@@ -114,9 +76,9 @@
 			// it's not 'linear', so (hopefully!) it fits the following ad-hoc pattern...
 
 			parsed['node1'] = [
-				createBlock(sheetRow(sheet, hdrIndexes[0]+1), 0, 'A'),
-				createBlock(sheetRow(sheet, hdrIndexes[1]+1), 0, 'B'),
-				createBlock(sheetRow(sheet, hdrIndexes[2]+1), 0, 'C')
+				createBlock(sheetRow(hdrIndexes[0]+1), 0, 'A'),
+				createBlock(sheetRow(hdrIndexes[1]+1), 0, 'B'),
+				createBlock(sheetRow(hdrIndexes[2]+1), 0, 'C')
 			];
 
 			var node2 = {};
@@ -124,9 +86,9 @@
 				hdrIndex = hdrIndexes[i];
 				choice1 = 'ABC'[i];
 				node2[choice1] = [
-					createBlock(sheetRow(sheet, hdrIndex+1), 5, choice1+'A'),
-					createBlock(sheetRow(sheet, hdrIndex+5), 5, choice1+'B'),
-					createBlock(sheetRow(sheet, hdrIndex+9), 5, choice1+'C')
+					createBlock(sheetRow(hdrIndex+1), 5, choice1+'A'),
+					createBlock(sheetRow(hdrIndex+5), 5, choice1+'B'),
+					createBlock(sheetRow(hdrIndex+9), 5, choice1+'C')
 				];
 			}
 			parsed['node2'] = node2
@@ -141,15 +103,20 @@
 					var pfx = choice1+choice2
 					var rowOffset = hdrIndex+hdrOffset
 					node3[pfx] = [
-						createBlock(sheetRow(sheet, rowOffset+1), 10, pfx+'A'),
-						createBlock(sheetRow(sheet, rowOffset+2), 10, pfx+'B'),
-						createBlock(sheetRow(sheet, rowOffset+3), 10, pfx+'C')
+						createBlock(sheetRow(rowOffset+1), 10, pfx+'A'),
+						createBlock(sheetRow(rowOffset+2), 10, pfx+'B'),
+						createBlock(sheetRow(rowOffset+3), 10, pfx+'C')
 					];
 				}
 			}
-			parsed['node3'] = node3
+			parsed['node3'] = node3;
 
-			return parsed
+			return parsed;
+
+			// because I'm lazy and don't want to type that much... :)
+			function sheetRow(rowIx) {
+				return xlsxService.sheetRow(sheet, rowIx);
+			}
 
 		}
 
@@ -164,7 +131,7 @@
 						parsed[sheetName] = sheetParsed;
 						$log.log(sheetName);
 					} else {
-						$log.log(sheetName+': unparseable');
+						$log.warn(sheetName+': unparseable');
 					}
 				} else {
 					$log.log(sheetName+': skipping');
@@ -172,6 +139,22 @@
 			});
 
 			return parsed;
+		}
+
+		function parseContentFromUrl(url) {
+			return xlsxService.loadWorkbookFromUrl(url)
+				.then(function(book) {
+					service.parsedContent = parseAllSheets(book);
+					return service.parsedContent;
+				});
+		}
+
+		function parseContentFromFile(fileObject) {
+			return xlsxService.loadWorkbookFromFile(fileObject)
+				.then(function(book) {
+					service.parsedContent = parseAllSheets(book);
+					return service.parsedContent;
+				});
 		}
 
 	}

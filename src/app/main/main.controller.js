@@ -6,27 +6,75 @@
     .controller('MainController', MainController);
 
     /** @ngInject */
-    function MainController($log, xlsxService, parseAAContentService) {
+    function MainController($scope, $log, xlsxService, parseAAContentService, dialogueService) {
         var vm = this;
 
-        var url = 'assets/Awkward Annie sequencing_v13_08_09_16_v2.xlsx';
+        vm.fileList = null;
+        vm.loadFromServer = loadFromServer;
+        vm.loadFromFile = loadFromFile;
+        vm.testGetDialog = testGetDialog;
 
-        var book;
+        vm.status = "No content loaded";
 
-        /*
-        xlsxService.loadWorkbookFromUrl(url)
-            .then(function(bk) {
-                book = bk;
-                $log.log(book);
+        $log.log(xlsxService.encodeCR(155,11));
+        $log.log(xlsxService.decodeCR(xlsxService.encodeCR(155,11)));
 
-                $log.log(parseAAContentService.parseAllSheets(book));
+        $log.log(dialogueService.dialogWorksheetKeys);
 
 
-            });
-        */
 
-        function handleFileLoad(e) {
-            $log.log(e);            
+        $scope.$watch(function() {return vm.fileList;}, function() {
+            $log.log(vm.fileList);
+            if (vm.fileList && vm.fileList.length>0) {
+
+                vm.status = "Loading from file '"+vm.fileList[0].name+"' ...";
+
+                parseAAContentService.parseContentFromFile(vm.fileList[0])
+                    .then(function(parsedContent) {
+                        vm.status = "Loaded from file '"+vm.fileList[0].name+"'.";
+                        $log.log('Success!');
+                        $log.log(parsedContent);
+                        vm.fileList = null;
+                    });
+            }
+        });
+
+        function loadFromFile(fileObject) {
+
+            vm.status = "Loading from file '"+fileObject.name+"' ...";
+
+            parseAAContentService.parseContentFromFile(fileObject)
+                .then(function(parsedContent) {
+                    vm.status = "Loaded from file '"+fileObject.name+"'.";
+                    $log.log('Success!');
+                    $log.log(parsedContent);
+                });
+        }
+
+        function loadFromServer() {
+            var url = 'assets/Awkward Annie sequencing_v13_08_09_16_v2.xlsx';
+
+            vm.status = "Loading from url '"+url+"' ...";
+
+            parseAAContentService.parseContentFromUrl(url)
+                .then(function(parsedContent) {
+                    vm.status = "Loaded from url '"+url+"'.";
+                    $log.log('Success!');
+                    $log.log(parsedContent);
+                });
+
+        }
+
+        function testGetDialog(dialogKey) {
+            dialogueService.getDialogs('charlie_01')
+                .then(function(data) {
+                    $log.log('success!');
+                    $log.log(data);
+                })
+                .catch(function(result) {
+                    $log.log('failure!');
+                    $log.log(result);
+                });
         }
 
     }
